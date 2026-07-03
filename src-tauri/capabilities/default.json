@@ -1,0 +1,57 @@
+{
+  "identifier": "default",
+  "description": "Default capability giving main window access to dialog and fs permissions",
+  "windows": ["main", "terminal-popout", "terminal"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-create",
+    "core:window:allow-set-title",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-center",
+    "core:window:allow-set-focus",
+    "core:window:allow-destroy",
+    "core:window:allow-is-focused",
+    "core:webview:allow-create-webview-window",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "fs:allow-read-dir",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "powershell",
+          "cmd": "powershell",
+          "args": true
+        },
+        {
+          "name": "cmd",
+          "cmd": "cmd",
+          "args": true
+        },
+        {
+          "name": "pwsh",
+          "cmd": "pwsh",
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-execute",
+    "shell:allow-open",
+    "shell:allow-stdin-write"
+  ]
+}

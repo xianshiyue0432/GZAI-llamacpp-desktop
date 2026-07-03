@@ -1,0 +1,55 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "CanAI",
+  "version": "1.0.5-10",
+  "identifier": "com.canai.app",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bunx vite build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "title": "CanAI",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/CanAI.ico"],
+    "targets": ["msi", "nsis"],
+    "resources": {
+      "llama-server.exe": "./",
+      "llama-server-impl.dll": "./",
+      "llama.dll": "./",
+      "llama-common.dll": "./",
+      "ggml.dll": "./",
+      "ggml-base.dll": "./",
+      "ggml-vulkan.dll": "./",
+      "ggml-cpu-x64.dll": "./",
+      "ggml-cpu-alderlake.dll": "./",
+      "ggml-cpu-cannonlake.dll": "./",
+      "ggml-cpu-cascadelake.dll": "./",
+      "ggml-cpu-cooperlake.dll": "./",
+      "ggml-cpu-haswell.dll": "./",
+      "ggml-cpu-icelake.dll": "./",
+      "ggml-cpu-ivybridge.dll": "./",
+      "ggml-cpu-piledriver.dll": "./",
+      "ggml-cpu-sandybridge.dll": "./",
+      "ggml-cpu-sapphirerapids.dll": "./",
+      "ggml-cpu-skylakex.dll": "./",
+      "ggml-cpu-sse42.dll": "./",
+      "ggml-cpu-zen4.dll": "./",
+      "mtmd.dll": "./"
+    }
+  }
+}
