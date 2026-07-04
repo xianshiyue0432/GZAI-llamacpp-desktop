@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "CanAI",
-  "version": "1.0.5-10",
+  "version": "1.0.5-11",
   "identifier": "com.canai.app",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -30,10 +30,18 @@
     "resources": {
       "llama-server.exe": "./",
       "llama-server-impl.dll": "./",
+      "llama-batched-bench-impl.dll": "./",
+      "llama-bench-impl.dll": "./",
+      "llama-cli-impl.dll": "./",
+      "llama-completion-impl.dll": "./",
+      "llama-fit-params-impl.dll": "./",
+      "llama-perplexity-impl.dll": "./",
+      "llama-quantize-impl.dll": "./",
       "llama.dll": "./",
       "llama-common.dll": "./",
       "ggml.dll": "./",
       "ggml-base.dll": "./",
+      "ggml-rpc.dll": "./",
       "ggml-vulkan.dll": "./",
       "ggml-cpu-x64.dll": "./",
       "ggml-cpu-alderlake.dll": "./",
@@ -49,6 +57,7 @@
       "ggml-cpu-skylakex.dll": "./",
       "ggml-cpu-sse42.dll": "./",
       "ggml-cpu-zen4.dll": "./",
+      "libomp140.x86_64.dll": "./",
       "mtmd.dll": "./"
     }
   }
