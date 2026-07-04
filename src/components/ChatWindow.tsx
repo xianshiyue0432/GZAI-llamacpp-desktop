@@ -312,8 +312,8 @@ export default function ChatWindow({
     return Math.floor(sizeVal * 256)
   }
 
-  const [tabs, setTabs] = useState<Tab[]>([{ id: 'default', name: 'ClaudeGZ', taskId: undefined }])
-  const [activeTabId, setActiveTabId] = useState('default')
+  const [tabs, setTabs] = useState<Tab[]>([])
+  const [activeTabId, setActiveTabId] = useState('')
   
   const sessionMessages = activeTabId ? getSessionMessages(activeTabId) : []
 
