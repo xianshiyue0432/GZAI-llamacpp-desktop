@@ -32,10 +32,10 @@ import GZAIStudio from './GZAIStudio'
 type ToolTab = 'terminal' | 'skills' | 'mcp' | 'plugins'
 
 const tabs: { id: ToolTab; icon: typeof Terminal; label: string }[] = [
-  { id: 'terminal', icon: Terminal, label: '代码编辑终端' },
   { id: 'skills', icon: Sparkles, label: '技能' },
   { id: 'mcp', icon: Puzzle, label: 'MCP' },
   { id: 'plugins', icon: Plug, label: '插件' },
+  { id: 'terminal', icon: Terminal, label: '代码编辑终端' },
 ]
 
 interface Skill {

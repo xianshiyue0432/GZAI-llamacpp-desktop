@@ -75,6 +75,7 @@ interface ChatWindowProps {
   selectedFolder: string
   onFolderSelect: (folderPath: string) => void
   selectedSession: { id: string; name: string; taskId?: string } | null
+  deletedSessionKey?: number
 }
 
 export default function ChatWindow({
@@ -86,6 +87,7 @@ export default function ChatWindow({
   selectedFolder,
   onFolderSelect,
   selectedSession,
+  deletedSessionKey,
 }: ChatWindowProps) {
   const { messages, getSessionMessages, sendMessage: sendChatMessage, streamingSessions, activeModel, activeModelId, availableModels, providers, setActiveModelId, stopStreaming, clearSessionMessages, reloadProviders, defaultModelId, setDefaultModelId, setProviders, modelStatuses, setModelStatus, toggleMessageMark, retryMessage, deleteMessage, copyMessage, rollbackToMessage, undoRollback, isRolledBack, rollbackState, messageQueue, enqueueMessage, removeQueuedMessage, sendQueuedMessage, moveQueuedMessageToFront, dequeueMessageToInput, getQueuedMessages, llamaServiceStatus, setLlamaServiceStatus } = useChat()
   const [inputValue, setInputValue] = useState('')
@@ -284,6 +286,7 @@ export default function ChatWindow({
 
   // 文件选择隐藏input
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const recentFolders = [
     'E:\\Workspace\\AI-Work',
@@ -577,12 +580,66 @@ export default function ChatWindow({
     }
   }, [])
 
+  // 监听外部删除会话事件，关闭对应标签
+  const prevDeletedSessionKeyRef = useRef(deletedSessionKey)
+  useEffect(() => {
+    if (deletedSessionKey !== undefined && deletedSessionKey !== prevDeletedSessionKeyRef.current && selectedSession) {
+      prevDeletedSessionKeyRef.current = deletedSessionKey
+      const tabToClose = tabs.find(tab => tab.id === selectedSession.id)
+      if (tabToClose) {
+        closedTabIdsRef.current.add(selectedSession.id)
+        const newTabs = tabs.filter(tab => tab.id !== selectedSession.id)
+        setTabs(newTabs)
+        if (newTabs.length > 0) {
+          setActiveTabId(newTabs[0].id)
+        } else {
+          setActiveTabId('')
+        }
+      }
+    }
+  }, [deletedSessionKey])
+
+  const closedTabIdsRef = useRef<Set<string>>(new Set())
+
+  // 根据对话内容自动生成标签显示名称（手动重命名的会话不覆盖）
+  const getTabDisplayName = (tabId: string, storedName: string): string => {
+    try {
+      const renamedIds: string[] = JSON.parse(localStorage.getItem('canai-renamed-sessions') || '[]')
+      if (renamedIds.includes(tabId)) return storedName
+    } catch {}
+    const msgs = getSessionMessages(tabId)
+    if (!msgs || msgs.length === 0 || msgs.every(m => !m.content?.trim())) return storedName
+    const firstUserMsg = msgs.find(m => m.role === 'user')
+    if (!firstUserMsg?.content?.trim()) return storedName
+    const content = firstUserMsg.content.trim()
+    const first6 = content.length > 6 ? content.substring(0, 6) + '…' : content
+    const sendTime = firstUserMsg.sendTime
+    if (sendTime) {
+      const now = new Date()
+      const msgDate = new Date(sendTime)
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate())
+      const diffDays = Math.round((todayStart.getTime() - msgDay.getTime()) / (1000 * 60 * 60 * 24))
+      let timeStr: string
+      if (diffDays === 0) {
+        timeStr = `${msgDate.getHours().toString().padStart(2, '0')}:${msgDate.getMinutes().toString().padStart(2, '0')}`
+      } else if (diffDays === 1) {
+        timeStr = '昨天'
+      } else {
+        timeStr = `${msgDate.getDate()}/${msgDate.getMonth() + 1}`
+      }
+      return `【${timeStr}】${first6}`
+    }
+    return first6
+  }
+
   useEffect(() => {
     if (selectedSession) {
+      closedTabIdsRef.current.delete(selectedSession.id)
       const existingTab = tabs.find(tab => tab.id === selectedSession.id)
       if (existingTab) {
         setActiveTabId(selectedSession.id)
-      } else {
+      } else if (tabs.length > 0 || !closedTabIdsRef.current.has(selectedSession.id)) {
         const newTab: Tab = { id: selectedSession.id, name: selectedSession.name, taskId: selectedSession.taskId }
         setTabs(prev => [...prev, newTab])
         setActiveTabId(selectedSession.id)
@@ -593,6 +650,7 @@ export default function ChatWindow({
   const handleSessionClick = (sessionId: string, sessionName: string, taskId?: string, folderPath?: string) => {
     onSessionSelect(sessionId, sessionName, taskId, folderPath)
     
+    closedTabIdsRef.current.delete(sessionId)
     const existingTab = tabs.find(tab => tab.id === sessionId)
     if (existingTab) {
       setActiveTabId(sessionId)
@@ -607,6 +665,7 @@ export default function ChatWindow({
     e.stopPropagation()
     
     if (tabs.length === 1) {
+      closedTabIdsRef.current.add(tabId)
       setTabs([])
       setActiveTabId('')
       return
@@ -616,7 +675,7 @@ export default function ChatWindow({
     setTabs(newTabs)
     
     if (activeTabId === tabId) {
-      const newActiveTab = newTabs[0] || { id: 'default', name: 'ClaudeGZ', taskId: undefined }
+      const newActiveTab = newTabs[0]
       setActiveTabId(newActiveTab.id)
     }
   }
@@ -776,22 +835,24 @@ export default function ChatWindow({
       </div>
       
       {/* 会话标签栏 */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+      <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto flex-nowrap scrollbar-thin">
         {tabs.map((tab) => (
           <div
             key={tab.id}
-            onClick={() => setActiveTabId(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 cursor-pointer transition-colors whitespace-nowrap ${
+            onClick={() => {
+              setActiveTabId(tab.id)
+              onSessionSelect(tab.id, tab.name, tab.taskId)
+            }}
+            className={`flex items-center gap-1 px-2 py-2 cursor-pointer transition-colors flex-shrink min-w-[28px] max-w-[200px] ${
               activeTabId === tab.id
                 ? 'bg-white dark:bg-gray-800 border-b-2 border-blue-500 text-gray-900 dark:text-white'
                 : 'bg-gray-50 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            <MessageSquare className="w-4 h-4" />
-            <span className="text-sm">{tab.name}</span>
+            <span className="text-sm truncate flex-1" title={tab.name}>{getTabDisplayName(tab.id, tab.name)}</span>
             <button
               onClick={(e) => closeTab(tab.id, e)}
-              className="ml-1 p-0.5 rounded transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
+              className="p-0.5 rounded transition-colors hover:bg-gray-200 dark:hover:bg-gray-700 flex-shrink-0"
               title="关闭标签"
             >
               <X className="w-3 h-3" />
@@ -1218,8 +1279,15 @@ export default function ChatWindow({
               </div>
             )}
             <textarea
+              ref={textareaRef}
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={(e) => {
+                setInputValue(e.target.value)
+                if (textareaRef.current) {
+                  textareaRef.current.style.height = 'auto'
+                  textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 192) + 'px'
+                }
+              }}
               onPaste={handlePaste}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -1229,7 +1297,8 @@ export default function ChatWindow({
               }}
               placeholder="输入消息... (可粘贴图片)"
               rows={2}
-              className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto"
+              style={{ resize: 'none', minHeight: '64px', maxHeight: '192px' }}
             />
           </div>
           
@@ -1333,7 +1402,280 @@ export default function ChatWindow({
         
         {activeModel && (
           <div className="flex items-center gap-2 mt-1 mb-1 text-[10px] text-gray-400">
-            <Bot className="w-2.5 h-2.5" />
+            <div ref={modelModalRef} className="relative">
+              <button
+                onClick={() => setShowModelModal(!showModelModal)}
+                className="flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors cursor-pointer"
+                title="选择模型"
+              >
+                <Bot className="w-3 h-3" />
+                模型
+              </button>
+              {showModelModal && (
+                <div className="absolute left-0 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50" style={{ bottom: '100%', top: 'auto', marginBottom: '4px' }}>
+                  <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">选择模型</h4>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setRefreshing(true)
+                        reloadProviders()
+                        setTimeout(() => setRefreshing(false), 800)
+                      }}
+                      className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
+                      title="刷新模型列表"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-blue-500' : ''}`} />
+                    </button>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                    <div className="p-2">
+                      <div className="flex items-center gap-1.5 px-3 py-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">云模型</p>
+                      </div>
+                      {providers.filter(p => p.type === 'cloud' && p.enabled).length === 0 ? (
+                        <div className="px-3 py-3 text-xs text-gray-400 text-center">（暂无可用模型，请配置）</div>
+                      ) : (
+                        providers.filter(p => p.type === 'cloud' && p.enabled).map((provider) => (
+                          <div key={provider.id}>
+                            <p className="px-3 py-1 text-xs text-gray-400">{provider.name}</p>
+                            {provider.models.map((model) => (
+                              <div
+                                key={model.id}
+                                className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${
+                                  activeModelId === model.id
+                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                }`}
+                                onClick={() => {
+                                  setActiveModelId(model.id, provider.id)
+                                  setDefaultModelId(model.id)
+                                  setShowModelModal(false)
+                                }}
+                              >
+                                {activeModelId === model.id ? (
+                                  <Check className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                                ) : (
+                                  <span className="w-3.5 h-3.5 flex-shrink-0" />
+                                )}
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                  modelStatuses[model.id] === 'ok' ? 'bg-green-500' :
+                                  modelStatuses[model.id] === 'fail' ? 'bg-red-500' :
+                                  'bg-gray-300 dark:bg-gray-500'
+                                }`} />
+                                <span className="truncate flex-1" title={model.name}>{model.name}</span>
+                                <div className="flex items-center gap-0.5 flex-shrink-0 opacity-60 group-hover:opacity-100">
+                                  <div className="relative">
+                                    <button
+                                      onClick={(e) => handleTestModel(model.id, e)}
+                                      title="测试可用性"
+                                      className={`p-1 rounded transition-colors ${
+                                        testingModels[model.id] === 'testing' || testingModels[model.id] === 'ok'
+                                          ? 'bg-green-500 text-white'
+                                          : 'text-gray-400 hover:text-green-500'
+                                      }`}
+                                    >
+                                      {testingModels[model.id] === 'testing' ? (
+                                        <RefreshCw className="w-3 h-3 animate-spin" />
+                                      ) : testingModels[model.id] === 'ok' ? (
+                                        <span className="text-[9px] font-bold px-0.5">可用</span>
+                                      ) : (
+                                        <Wifi className="w-3 h-3" />
+                                      )}
+                                    </button>
+                                    {modelTestErrors[model.id] && (
+                                      <div className="absolute right-full top-1/2 -translate-y-1/2 mr-1.5 px-2 py-1 bg-red-600 text-white text-[9px] rounded shadow-lg z-20 max-w-[220px] text-left leading-tight whitespace-normal">
+                                        {modelTestErrors[model.id]}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={(e) => handleToggleDefault(model.id, e)}
+                                    title={defaultModelId === model.id ? '取消默认' : '设为默认'}
+                                    className={`p-1 rounded transition-colors ${
+                                      defaultModelId === model.id
+                                        ? 'text-yellow-500'
+                                        : 'text-gray-400 hover:text-yellow-500'
+                                    }`}
+                                  >
+                                    <Star className={`w-3 h-3 ${defaultModelId === model.id ? 'fill-yellow-500' : ''}`} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleDeleteModelFromList(model.id, e)}
+                                    title="删除"
+                                    className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="p-2">
+                      <div className="flex items-center gap-1.5 px-3 py-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">本地模型</p>
+                      </div>
+                      {providers.filter(p => p.type === 'local' && p.enabled).length === 0 ? (
+                        <div className="px-3 py-3 text-xs text-gray-400 text-center">（暂无可用本地模型，请下载）</div>
+                      ) : (
+                        providers.filter(p => p.type === 'local' && p.enabled).map((provider) => (
+                          <div key={provider.id}>
+                            <p className="px-3 py-1 text-xs text-gray-400">{provider.name}</p>
+                            {provider.models.map((model) => (
+                              <div
+                                key={model.id}
+                                className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${
+                                  activeModelId === model.id
+                                    ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                }`}
+                                onClick={() => {
+                                  setActiveModelId(model.id, provider.id)
+                                  setDefaultModelId(model.id)
+                                  try { localStorage.setItem('canai-local-selected-model', model.id) } catch {}
+                                  setShowModelModal(false)
+                                  const filePath = model.filePath || (() => {
+                                    try {
+                                      const paths = JSON.parse(localStorage.getItem('canai-local-model-paths') || '{}')
+                                      return paths[model.id]
+                                    } catch { return undefined }
+                                  })()
+                                  const sconfig = (() => {
+                                    try { return JSON.parse(localStorage.getItem('canai-local-server-config') || '{}') }
+                                    catch { return {} }
+                                  })()
+                                  if (filePath && sconfig.port) {
+                                    let mmprojPath = model.mmprojPath
+                                    let audioInputPath = model.audioInputPath
+                                    let audioOutputPath = model.modelVocoder
+                                    if (!mmprojPath && !audioInputPath && !audioOutputPath) {
+                                      try {
+                                        const companionConfigs = JSON.parse(localStorage.getItem('canai-local-companion-configs') || '{}')
+                                        const companion = companionConfigs[model.id]
+                                        if (companion) {
+                                          if (companion.image_video?.length > 0) mmprojPath = companion.image_video[0].file_path
+                                          if (companion.audio_input?.length > 0) audioInputPath = companion.audio_input[0].file_path
+                                          if (companion.audio_output?.length > 0) audioOutputPath = companion.audio_output[0].file_path
+                                        }
+                                      } catch {}
+                                    }
+                                    setLlamaServiceStatus('switching')
+                                    invoke('llama_cpp_switch_model', {
+                                      config: {
+                                        model_path: filePath,
+                                        port: sconfig.port,
+                                        host: sconfig.host || '127.0.0.1',
+                                        n_gpu_layers: sconfig.n_gpu_layers ?? -1,
+                                        n_ctx: sconfig.n_ctx || 4096,
+                                        threads: sconfig.threads || 8,
+                                        batch_size: sconfig.batch_size || 512,
+                                        api_key: sconfig.apiKey || undefined,
+                                        mtp_tokens: sconfig.mtp_tokens || 0,
+                                        mmproj_path: mmprojPath,
+                                        audio_input_path: audioInputPath,
+                                        model_vocoder: audioOutputPath,
+                                      }
+                                    }).then(() => {
+                                      setLlamaServiceStatus('running')
+                                    }).catch((e) => {
+                                      console.error('切换本地模型失败:', e)
+                                      setLlamaServiceStatus('stopped')
+                                    })
+                                  }
+                                }}
+                              >
+                                {activeModelId === model.id ? (
+                                  <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                                ) : (
+                                  <span className="w-3.5 h-3.5 flex-shrink-0" />
+                                )}
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                  modelStatuses[model.id] === 'ok' ? 'bg-green-500' :
+                                  modelStatuses[model.id] === 'fail' ? 'bg-red-500' :
+                                  'bg-gray-300 dark:bg-gray-500'
+                                }`} />
+                                <span className="truncate flex-1" title={model.name}>{model.name}</span>
+                                <div className="flex items-center gap-0.5 flex-shrink-0 opacity-60 group-hover:opacity-100">
+                                  <div className="relative">
+                                    <button
+                                      onClick={(e) => handleTestModel(model.id, e)}
+                                      title="测试可用性"
+                                      className={`p-1 rounded transition-colors ${
+                                        testingModels[model.id] === 'testing' || testingModels[model.id] === 'ok'
+                                          ? 'bg-green-500 text-white'
+                                          : 'text-gray-400 hover:text-green-500'
+                                      }`}
+                                    >
+                                      {testingModels[model.id] === 'testing' ? (
+                                        <RefreshCw className="w-3 h-3 animate-spin" />
+                                      ) : testingModels[model.id] === 'ok' ? (
+                                        <span className="text-[9px] font-bold px-0.5">可用</span>
+                                      ) : (
+                                        <Wifi className="w-3 h-3" />
+                                      )}
+                                    </button>
+                                    {modelTestErrors[model.id] && (
+                                      <div className="absolute right-full top-1/2 -translate-y-1/2 mr-1.5 px-2 py-1 bg-red-600 text-white text-[9px] rounded shadow-lg z-20 max-w-[220px] text-left leading-tight whitespace-normal">
+                                        {modelTestErrors[model.id]}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={(e) => handleToggleDefault(model.id, e)}
+                                    title={defaultModelId === model.id ? '取消默认' : '设为默认'}
+                                    className={`p-1 rounded transition-colors ${
+                                      defaultModelId === model.id
+                                        ? 'text-yellow-500'
+                                        : 'text-gray-400 hover:text-yellow-500'
+                                    }`}
+                                  >
+                                    <Star className={`w-3 h-3 ${defaultModelId === model.id ? 'fill-yellow-500' : ''}`} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleDeleteModelFromList(model.id, e)}
+                                    title="删除"
+                                    className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="border-t border-gray-200 dark:border-gray-700 mx-3" />
+                    <div className="p-2">
+                      <div className="flex items-center gap-1.5 px-3 py-1.5">
+                        <Brain className="w-3.5 h-3.5 text-purple-400" />
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">推理等级</p>
+                      </div>
+                      <div className="flex gap-1 px-3 py-1">
+                        {(['low', 'medium', 'high', 'maximum'] as const).map((level) => (
+                          <button
+                            key={level}
+                            onClick={() => setReasoningEffort(level)}
+                            className={`flex-1 px-2 py-1.5 text-xs rounded-lg transition-colors ${
+                              reasoningEffort === level
+                                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-300 dark:border-purple-700'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-200 dark:hover:bg-gray-600'
+                            }`}
+                          >
+                            {level === 'low' ? '低' : level === 'medium' ? '中' : level === 'high' ? '高' : '最大'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <span className={`px-1 rounded ${activeModel.type === 'local' ? 'bg-green-100 dark:bg-green-900/30 text-green-600' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'}`}>
               {activeModel.type === 'local' ? '本地' : '云端'}
             </span>
@@ -1341,18 +1683,100 @@ export default function ChatWindow({
             <span className="text-gray-300">|</span>
             <span className="truncate max-w-[150px]">{activeModel.providerName}</span>
             <span className="text-gray-300">|</span>
-            <span className={`flex items-center gap-1 ${
-              llamaServiceStatus === 'running' ? 'text-green-500' :
-              llamaServiceStatus === 'switching' ? 'text-yellow-500' :
-              'text-gray-400'
-            }`}>
+            <button
+              onClick={async () => {
+                if (llamaServiceStatus === 'running' || llamaServiceStatus === 'switching' || llamaServiceStatus === 'starting') {
+                  try {
+                    await invoke('llama_cpp_stop')
+                    setLlamaServiceStatus('stopped')
+                  } catch (e) {
+                    setLlamaServiceStatus('stopped')
+                  }
+                } else {
+                  setLlamaServiceStatus('starting')
+                  try {
+                    const sconfig = JSON.parse(localStorage.getItem('canai-local-server-config') || '{}')
+                    // 从 providers 中获取本地模型信息
+                    const localProvider = providers.find(p => p.type === 'local' && p.enabled)
+                    let modelPath = ''
+                    let mmprojPath: string | undefined
+                    let audioInputPath: string | undefined
+                    let audioOutputPath: string | undefined
+
+                    if (localProvider && localProvider.models.length > 0) {
+                      const savedModelId = localStorage.getItem('canai-local-selected-model')
+                      let targetModel = localProvider.models.find(m => m.id === savedModelId)
+                      if (!targetModel) targetModel = localProvider.models[0]
+                      if (targetModel) {
+                        modelPath = targetModel.filePath || targetModel.id
+                        mmprojPath = targetModel.mmprojPath
+                        audioInputPath = targetModel.audioInputPath
+                        audioOutputPath = targetModel.modelVocoder
+                        // 如果 provider 中没有 mmproj 信息，从 localStorage 的 companion 配置中读取
+                        if (!mmprojPath && !audioInputPath && !audioOutputPath) {
+                          try {
+                            const companionConfigs = JSON.parse(localStorage.getItem('canai-local-companion-configs') || '{}')
+                            const companion = companionConfigs[targetModel.id]
+                            if (companion) {
+                              if (companion.image_video?.length > 0) mmprojPath = companion.image_video[0].file_path
+                              if (companion.audio_input?.length > 0) audioInputPath = companion.audio_input[0].file_path
+                              if (companion.audio_output?.length > 0) audioOutputPath = companion.audio_output[0].file_path
+                            }
+                          } catch {}
+                        }
+                      }
+                    }
+
+                    if (!modelPath || !sconfig.port) {
+                      setLlamaServiceStatus('stopped')
+                      setShowModelModal(true)
+                      return
+                    }
+
+                    const status: { running: boolean } = await invoke('llama_cpp_start', {
+                      config: {
+                        model_path: modelPath,
+                        port: sconfig.port,
+                        host: sconfig.host || '127.0.0.1',
+                        n_gpu_layers: sconfig.n_gpu_layers ?? -1,
+                        n_ctx: sconfig.n_ctx || 4096,
+                        threads: sconfig.threads || 8,
+                        batch_size: sconfig.batch_size || 512,
+                        api_key: sconfig.apiKey || undefined,
+                        mtp_tokens: sconfig.mtp_tokens || 0,
+                        mmproj_path: mmprojPath,
+                        audio_input_path: audioInputPath,
+                        model_vocoder: audioOutputPath,
+                      }
+                    })
+                    setLlamaServiceStatus(status.running ? 'running' : 'stopped')
+                  } catch (e) {
+                    setLlamaServiceStatus('stopped')
+                  }
+                }
+              }}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+                llamaServiceStatus === 'running'
+                  ? 'text-green-500 bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-800/40 cursor-pointer'
+                  : llamaServiceStatus === 'switching'
+                    ? 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30 cursor-pointer'
+                    : llamaServiceStatus === 'starting'
+                      ? 'text-red-500 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-800/40 cursor-pointer'
+                      : 'text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer'
+              }`}
+              title={
+                llamaServiceStatus === 'starting' ? '点击中止启动' :
+                llamaServiceStatus === 'running' ? '点击停止服务' :
+                '点击启动本地服务'
+              }
+            >
               <span className={`w-1.5 h-1.5 rounded-full ${
                 llamaServiceStatus === 'running' ? 'bg-green-500 animate-pulse' :
-                llamaServiceStatus === 'switching' ? 'bg-yellow-500 animate-pulse' :
+                llamaServiceStatus === 'starting' || llamaServiceStatus === 'switching' ? 'bg-yellow-500 animate-pulse' :
                 'bg-gray-400'
               }`} />
-              本地服务{llamaServiceStatus === 'running' ? '运行中' : llamaServiceStatus === 'switching' ? '正在切换模型' : '已停止'}
-            </span>
+              {llamaServiceStatus === 'running' ? '停止本地服务' : llamaServiceStatus === 'starting' ? '点击中止启动' : llamaServiceStatus === 'switching' ? '切换模型中...' : '启动本地服务'}
+            </button>
           </div>
         )}
         <div className="flex items-center gap-2 mt-2 text-xs text-gray-500 relative">
@@ -2145,289 +2569,7 @@ export default function ChatWindow({
             <Terminal className="w-3.5 h-3.5" />
             终端
           </button>
-          <div ref={modelModalRef} className="relative ml-2">
-            <button
-              onClick={() => setShowModelModal(!showModelModal)}
-              className="flex items-center gap-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors cursor-pointer"
-              title="选择模型"
-            >
-              <Bot className="w-3 h-3" />
-              模型
-            </button>
 
-            {/* 模型选择弹窗 */}
-            {showModelModal && (
-              <div className="absolute right-0 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50" style={{ bottom: '100%', top: 'auto', marginBottom: '4px' }}>
-                <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">选择模型</h4>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setRefreshing(true)
-                      reloadProviders()
-                      setTimeout(() => setRefreshing(false), 800)
-                    }}
-                    className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
-                    title="刷新模型列表"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-blue-500' : ''}`} />
-                  </button>
-                </div>
-                <div className="max-h-80 overflow-y-auto custom-scrollbar">
-                  {/* 云端模型 */}
-                  <div className="p-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">云模型</p>
-                    </div>
-                    {providers.filter(p => p.type === 'cloud' && p.enabled).length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-gray-400 text-center">（暂无可用模型，请配置）</div>
-                    ) : (
-                      providers.filter(p => p.type === 'cloud' && p.enabled).map((provider) => (
-                        <div key={provider.id}>
-                          <p className="px-3 py-1 text-xs text-gray-400">{provider.name}</p>
-                          {provider.models.map((model) => (
-                            <div
-                              key={model.id}
-                              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${
-                                activeModelId === model.id
-                                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                              }`}
-                              onClick={() => {
-                                setActiveModelId(model.id, provider.id)
-                                setDefaultModelId(model.id)
-                                setShowModelModal(false)
-                              }}
-                            >
-                              {activeModelId === model.id ? (
-                                <Check className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                              ) : (
-                                <span className="w-3.5 h-3.5 flex-shrink-0" />
-                              )}
-                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                modelStatuses[model.id] === 'ok' ? 'bg-green-500' :
-                                modelStatuses[model.id] === 'fail' ? 'bg-red-500' :
-                                'bg-gray-300 dark:bg-gray-500'
-                              }`} />
-                              <span className="truncate flex-1" title={model.name}>{model.name}</span>
-                              <div className="flex items-center gap-0.5 flex-shrink-0 opacity-60 group-hover:opacity-100">
-                                <div className="relative">
-                                  <button
-                                    onClick={(e) => handleTestModel(model.id, e)}
-                                    title="测试可用性"
-                                    className={`p-1 rounded transition-colors ${
-                                      testingModels[model.id] === 'testing' || testingModels[model.id] === 'ok'
-                                        ? 'bg-green-500 text-white'
-                                        : 'text-gray-400 hover:text-green-500'
-                                    }`}
-                                  >
-                                    {testingModels[model.id] === 'testing' ? (
-                                      <RefreshCw className="w-3 h-3 animate-spin" />
-                                    ) : testingModels[model.id] === 'ok' ? (
-                                      <span className="text-[9px] font-bold px-0.5">可用</span>
-                                    ) : (
-                                      <Wifi className="w-3 h-3" />
-                                    )}
-                                  </button>
-                                  {modelTestErrors[model.id] && (
-                                    <div className="absolute right-full top-1/2 -translate-y-1/2 mr-1.5 px-2 py-1 bg-red-600 text-white text-[9px] rounded shadow-lg z-20 max-w-[220px] text-left leading-tight whitespace-normal">
-                                      {modelTestErrors[model.id]}
-                                    </div>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={(e) => handleToggleDefault(model.id, e)}
-                                  title={defaultModelId === model.id ? '取消默认' : '设为默认'}
-                                  className={`p-1 rounded transition-colors ${
-                                    defaultModelId === model.id
-                                      ? 'text-yellow-500'
-                                      : 'text-gray-400 hover:text-yellow-500'
-                                  }`}
-                                >
-                                  <Star className={`w-3 h-3 ${defaultModelId === model.id ? 'fill-yellow-500' : ''}`} />
-                                </button>
-                                <button
-                                  onClick={(e) => handleDeleteModelFromList(model.id, e)}
-                                  title="删除"
-                                  className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  {/* 本地模型 */}
-                  <div className="p-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">本地模型</p>
-                    </div>
-                    {providers.filter(p => p.type === 'local' && p.enabled).length === 0 ? (
-                      <div className="px-3 py-3 text-xs text-gray-400 text-center">（暂无可用本地模型，请下载）</div>
-                    ) : (
-                      providers.filter(p => p.type === 'local' && p.enabled).map((provider) => (
-                        <div key={provider.id}>
-                          <p className="px-3 py-1 text-xs text-gray-400">{provider.name}</p>
-                          {provider.models.map((model) => (
-                            <div
-                              key={model.id}
-                              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${
-                                activeModelId === model.id
-                                  ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'
-                                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                              }`}
-                              onClick={() => {
-                                setActiveModelId(model.id, provider.id)
-                                setDefaultModelId(model.id)
-                                try { localStorage.setItem('canai-local-selected-model', model.id) } catch {}
-                                setShowModelModal(false)
-                                const filePath = model.filePath || (() => {
-                                  try {
-                                    const paths = JSON.parse(localStorage.getItem('canai-local-model-paths') || '{}')
-                                    return paths[model.id]
-                                  } catch { return undefined }
-                                })()
-                                const sconfig = (() => {
-                                  try { return JSON.parse(localStorage.getItem('canai-local-server-config') || '{}') }
-                                  catch { return {} }
-                                })()
-                                if (filePath && sconfig.port) {
-                                  let mmprojPath = model.mmprojPath
-                                  let audioInputPath = model.audioInputPath
-                                  let audioOutputPath = model.modelVocoder
-                                  if (!mmprojPath && !audioInputPath && !audioOutputPath) {
-                                    try {
-                                      const companionConfigs = JSON.parse(localStorage.getItem('canai-local-companion-configs') || '{}')
-                                      const companion = companionConfigs[model.id]
-                                      if (companion) {
-                                        if (companion.image_video?.length > 0) mmprojPath = companion.image_video[0].file_path
-                                        if (companion.audio_input?.length > 0) audioInputPath = companion.audio_input[0].file_path
-                                        if (companion.audio_output?.length > 0) audioOutputPath = companion.audio_output[0].file_path
-                                      }
-                                    } catch {}
-                                  }
-                                  setLlamaServiceStatus('switching')
-                                  invoke('llama_cpp_switch_model', {
-                                    config: {
-                                      model_path: filePath,
-                                      port: sconfig.port,
-                                      host: sconfig.host || '127.0.0.1',
-                                      n_gpu_layers: sconfig.n_gpu_layers ?? -1,
-                                      n_ctx: sconfig.n_ctx || 4096,
-                                      threads: sconfig.threads || 8,
-                                      batch_size: sconfig.batch_size || 512,
-                                      api_key: sconfig.apiKey || undefined,
-                                      mtp_tokens: sconfig.mtp_tokens || 0,
-                                      mmproj_path: mmprojPath,
-                                      audio_input_path: audioInputPath,
-                                      model_vocoder: audioOutputPath,
-                                    }
-                                  }).then(() => {
-                                    setLlamaServiceStatus('running')
-                                  }).catch((e) => {
-                                    console.error('切换本地模型失败:', e)
-                                    setLlamaServiceStatus('stopped')
-                                  })
-                                }
-                              }}
-                            >
-                              {activeModelId === model.id ? (
-                                <Check className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                              ) : (
-                                <span className="w-3.5 h-3.5 flex-shrink-0" />
-                              )}
-                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                modelStatuses[model.id] === 'ok' ? 'bg-green-500' :
-                                modelStatuses[model.id] === 'fail' ? 'bg-red-500' :
-                                'bg-gray-300 dark:bg-gray-500'
-                              }`} />
-                              <span className="truncate flex-1" title={model.name}>{model.name}</span>
-                              <div className="flex items-center gap-0.5 flex-shrink-0 opacity-60 group-hover:opacity-100">
-                                <div className="relative">
-                                  <button
-                                    onClick={(e) => handleTestModel(model.id, e)}
-                                    title="测试可用性"
-                                    className={`p-1 rounded transition-colors ${
-                                      testingModels[model.id] === 'testing' || testingModels[model.id] === 'ok'
-                                        ? 'bg-green-500 text-white'
-                                        : 'text-gray-400 hover:text-green-500'
-                                    }`}
-                                  >
-                                    {testingModels[model.id] === 'testing' ? (
-                                      <RefreshCw className="w-3 h-3 animate-spin" />
-                                    ) : testingModels[model.id] === 'ok' ? (
-                                      <span className="text-[9px] font-bold px-0.5">可用</span>
-                                    ) : (
-                                      <Wifi className="w-3 h-3" />
-                                    )}
-                                  </button>
-                                  {modelTestErrors[model.id] && (
-                                    <div className="absolute right-full top-1/2 -translate-y-1/2 mr-1.5 px-2 py-1 bg-red-600 text-white text-[9px] rounded shadow-lg z-20 max-w-[220px] text-left leading-tight whitespace-normal">
-                                      {modelTestErrors[model.id]}
-                                    </div>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={(e) => handleToggleDefault(model.id, e)}
-                                  title={defaultModelId === model.id ? '取消默认' : '设为默认'}
-                                  className={`p-1 rounded transition-colors ${
-                                    defaultModelId === model.id
-                                      ? 'text-yellow-500'
-                                      : 'text-gray-400 hover:text-yellow-500'
-                                  }`}
-                                >
-                                  <Star className={`w-3 h-3 ${defaultModelId === model.id ? 'fill-yellow-500' : ''}`} />
-                                </button>
-                                <button
-                                  onClick={(e) => handleDeleteModelFromList(model.id, e)}
-                                  title="删除"
-                                  className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  {/* 分隔线 */}
-                  <div className="border-t border-gray-200 dark:border-gray-700 mx-3" />
-
-                  {/* 推理等级 */}
-                  <div className="p-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5">
-                      <Brain className="w-3.5 h-3.5 text-purple-400" />
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">推理等级</p>
-                    </div>
-                    <div className="flex gap-1 px-3 py-1">
-                      {(['low', 'medium', 'high', 'maximum'] as const).map((level) => (
-                        <button
-                          key={level}
-                          onClick={() => setReasoningEffort(level)}
-                          className={`flex-1 px-2 py-1.5 text-xs rounded-lg transition-colors ${
-                            reasoningEffort === level
-                              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border border-purple-300 dark:border-purple-700'
-                              : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-200 dark:hover:bg-gray-600'
-                          }`}
-                        >
-                          {level === 'low' ? '低' : level === 'medium' ? '中' : level === 'high' ? '高' : '最大'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* 工作区文件夹选择和上下文信息 */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { ThemeProvider, useTheme } from './contexts/ThemeContext'
 import { ChatProvider } from './contexts/ChatContext'
 import Sidebar from './components/Sidebar'
@@ -139,10 +139,44 @@ function AppContent() {
   const [activeView, setActiveView] = useState<ViewType>('chat')
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(256)
+  const [rightPanelWidth, setRightPanelWidth] = useState(256)
+  const MIN_PANEL_WIDTH = 256
   const [selectedFolder, setSelectedFolder] = useState<string>('选择项目...')
   const [currentTaskFolder, setCurrentTaskFolder] = useState<string>('选择项目...')
   const [selectedSession, setSelectedSession] = useState<{ id: string; name: string; taskId?: string } | null>(null)
   const [fileTree, setFileTree] = useState<FileTreeItem[] | null>(null)
+  const [deletedSessionKey, setDeletedSessionKey] = useState(0)
+  const handleSessionDelete = (_sessionId: string, _taskId?: string) => setDeletedSessionKey(k => k + 1)
+
+  // 面板拖拽调整大小
+  const dragStateRef = useRef<{ type: 'left' | 'right'; startX: number; startWidth: number } | null>(null)
+  const handleDividerMouseDown = (type: 'left' | 'right', e: React.MouseEvent) => {
+    e.preventDefault()
+    dragStateRef.current = {
+      type,
+      startX: e.clientX,
+      startWidth: type === 'left' ? leftPanelWidth : rightPanelWidth,
+    }
+    document.addEventListener('mousemove', handleDividerMouseMove)
+    document.addEventListener('mouseup', handleDividerMouseUp)
+  }
+  const handleDividerMouseMove = useCallback((e: MouseEvent) => {
+    const drag = dragStateRef.current
+    if (!drag) return
+    if (drag.type === 'left') {
+      const newWidth = drag.startWidth + (e.clientX - drag.startX)
+      setLeftPanelWidth(Math.max(MIN_PANEL_WIDTH, newWidth))
+    } else {
+      const newWidth = drag.startWidth - (e.clientX - drag.startX)
+      setRightPanelWidth(Math.max(MIN_PANEL_WIDTH, newWidth))
+    }
+  }, [])
+  const handleDividerMouseUp = useCallback(() => {
+    dragStateRef.current = null
+    document.removeEventListener('mousemove', handleDividerMouseMove)
+    document.removeEventListener('mouseup', handleDividerMouseUp)
+  }, [handleDividerMouseMove])
 
   const [tasks, setTasks] = useState<Task[]>(() => loadTasks())
   const [sessions, setSessions] = useState<Session[]>(() => loadSessions())
@@ -241,10 +275,10 @@ function AppContent() {
       
       {activeView !== 'settings' && activeView !== 'tools' && activeView !== 'expert' && (
         <>
+          {/* 左侧面板 */}
           <div
-            className={`flex-shrink-0 transition-all duration-300 border-r-2 border-gray-200 dark:border-gray-700 overflow-hidden ${
-              leftPanelCollapsed ? 'w-0' : 'w-64'
-            }`}
+            className="flex-shrink-0 overflow-hidden"
+            style={{ width: leftPanelCollapsed ? 0 : leftPanelWidth }}
           >
             <SessionList 
               tasks={tasks}
@@ -254,8 +288,20 @@ function AppContent() {
               onSessionClick={handleSessionSelect}
               selectedFolder={selectedFolder}
               onTaskSelect={handleTaskSelect}
+              activeSessionId={selectedSession?.id}
+              activeTaskId={selectedSession?.taskId}
+              onSessionDelete={handleSessionDelete}
             />
           </div>
+          {/* 左侧拖拽分割线 */}
+          {!leftPanelCollapsed && (
+            <div
+              className="flex-shrink-0 w-1.5 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 active:bg-blue-500 transition-colors flex items-center justify-center"
+              onMouseDown={(e) => handleDividerMouseDown('left', e)}
+            >
+              <div className="w-0.5 h-8 rounded-full bg-gray-400 dark:bg-gray-500" />
+            </div>
+          )}
           
           <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-800">
             <ChatWindow 
@@ -267,13 +313,23 @@ function AppContent() {
               selectedFolder={currentTaskFolder}
               onFolderSelect={handleFolderSelect}
               selectedSession={selectedSession}
+              deletedSessionKey={deletedSessionKey}
             />
           </div>
           
+          {/* 右侧拖拽分割线 */}
+          {!rightPanelCollapsed && (
+            <div
+              className="flex-shrink-0 w-1.5 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 active:bg-blue-500 transition-colors flex items-center justify-center"
+              onMouseDown={(e) => handleDividerMouseDown('right', e)}
+            >
+              <div className="w-0.5 h-8 rounded-full bg-gray-400 dark:bg-gray-500" />
+            </div>
+          )}
+          {/* 右侧面板 */}
           <div
-            className={`flex-shrink-0 transition-all duration-300 border-l-2 border-gray-200 dark:border-gray-700 ${
-              rightPanelCollapsed ? 'w-0 overflow-hidden' : 'w-64'
-            }`}
+            className={`flex-shrink-0 ${rightPanelCollapsed ? 'overflow-hidden' : ''}`}
+            style={{ width: rightPanelCollapsed ? 0 : rightPanelWidth }}
           >
             <FileExplorer 
               selectedFolder={selectedFolder}

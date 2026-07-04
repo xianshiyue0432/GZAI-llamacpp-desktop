@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { selectFolderWithTree } from '../utils/selectFolder'
 import type { FileTreeItem } from '../utils/selectFolder'
+import { useChat } from '../contexts/ChatContext'
+import type { ChatMessage } from '../api/chat'
 import {
   Plus,
   Clock,
@@ -58,9 +60,13 @@ interface SessionListProps {
   onSessionClick: (sessionId: string, sessionName: string, taskId?: string, folderPath?: string, fileTree?: FileTreeItem[]) => void
   selectedFolder?: string
   onTaskSelect?: (taskId: string, folderPath?: string, fileTree?: FileTreeItem[]) => void
+  activeSessionId?: string
+  activeTaskId?: string
+  onSessionDelete?: (sessionId: string, taskId?: string) => void
 }
 
-export default function SessionList({ tasks, sessions, onTasksChange, onSessionsChange, onSessionClick, onTaskSelect }: SessionListProps) {
+export default function SessionList({ tasks, sessions, onTasksChange, onSessionsChange, onSessionClick, onTaskSelect, activeSessionId, activeTaskId, onSessionDelete }: SessionListProps) {
+  const { getSessionMessages } = useChat()
   const [expandedSections, setExpandedSections] = useState({
     chat: true,
     task: true,
@@ -72,6 +78,51 @@ export default function SessionList({ tasks, sessions, onTasksChange, onSessions
   const [sessionMenuPos, setSessionMenuPos] = useState<SessionMenuPosition>(null)
   const [renameSession, setRenameSession] = useState<{ taskId: string; sessionId: string; name: string } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ taskId: string; sessionId: string } | null>(null)
+
+  // 记录手动重命名的会话，持久化到 localStorage
+  const [renamedSessions, setRenamedSessions] = useState<Set<string>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('canai-renamed-sessions') || '[]')
+      return new Set<string>(saved)
+    } catch { return new Set<string>() }
+  })
+
+  const markSessionRenamed = (sessionId: string) => {
+    renamedSessions.add(sessionId)
+    setRenamedSessions(new Set(renamedSessions))
+    try {
+      localStorage.setItem('canai-renamed-sessions', JSON.stringify([...renamedSessions]))
+    } catch {}
+  }
+
+  // 根据对话内容自动生成显示名称（手动重命名的会话不覆盖）
+  const getDisplayName = (sessionId: string, storedName: string): string => {
+    if (renamedSessions.has(sessionId)) return storedName
+    const msgs = getSessionMessages(sessionId)
+    if (!msgs || msgs.length === 0 || msgs.every(m => !m.content?.trim())) return storedName
+    const firstUserMsg = msgs.find(m => m.role === 'user')
+    if (!firstUserMsg?.content?.trim()) return storedName
+    const content = firstUserMsg.content.trim()
+    const first6 = content.length > 6 ? content.substring(0, 6) + '…' : content
+    const sendTime = firstUserMsg.sendTime
+    if (sendTime) {
+      const now = new Date()
+      const msgDate = new Date(sendTime)
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const msgDay = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate())
+      const diffDays = Math.round((todayStart.getTime() - msgDay.getTime()) / (1000 * 60 * 60 * 24))
+      let timeStr: string
+      if (diffDays === 0) {
+        timeStr = `${msgDate.getHours().toString().padStart(2, '0')}:${msgDate.getMinutes().toString().padStart(2, '0')}`
+      } else if (diffDays === 1) {
+        timeStr = '昨天'
+      } else {
+        timeStr = `${msgDate.getDate()}/${msgDate.getMonth() + 1}`
+      }
+      return `【${timeStr}】${first6}`
+    }
+    return first6
+  }
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }))
@@ -185,6 +236,7 @@ export default function SessionList({ tasks, sessions, onTasksChange, onSessions
   const confirmDeleteSession = () => {
     if (!deleteConfirm) return
 
+    onSessionDelete?.(deleteConfirm.sessionId, deleteConfirm.taskId === 'mock' ? undefined : deleteConfirm.taskId)
     if (deleteConfirm.taskId === 'mock') {
       onSessionsChange(sessions.filter(s => s.id !== deleteConfirm.sessionId))
     } else {
@@ -222,6 +274,7 @@ export default function SessionList({ tasks, sessions, onTasksChange, onSessions
   const saveRenameSession = () => {
     if (!renameSession) return
 
+    markSessionRenamed(renameSession.sessionId)
     if (renameSession.taskId === 'mock') {
       onSessionsChange(sessions.map(s =>
         s.id === renameSession.sessionId
@@ -366,7 +419,7 @@ export default function SessionList({ tasks, sessions, onTasksChange, onSessions
                               autoFocus
                             />
                           ) : (
-                            <span className="truncate">{session.name}</span>
+                            <span className="truncate" title={session.name}>{getDisplayName(session.id, session.name)}</span>
                           )}
                         </div>
                         <button 
@@ -432,7 +485,7 @@ export default function SessionList({ tasks, sessions, onTasksChange, onSessions
                     onClick={() => { setSelectedSession(session.id); onSessionClick(session.id, session.name); }}
                     title={session.name}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                      selectedSession === session.id
+                      (activeSessionId !== undefined ? activeSessionId : selectedSession) === session.id
                         ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
@@ -456,7 +509,7 @@ export default function SessionList({ tasks, sessions, onTasksChange, onSessions
                           autoFocus
                         />
                       ) : (
-                        <span className="truncate">{session.name}</span>
+                        <span className="truncate" title={session.name}>{getDisplayName(session.id, session.name)}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -490,7 +543,9 @@ export default function SessionList({ tasks, sessions, onTasksChange, onSessions
                       }}
                       title={`${task.name} / ${session.name}`}
                       className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                        selectedSession === `${task.id}-${session.id}`
+                        activeSessionId !== undefined
+                          ? (activeSessionId === session.id && activeTaskId === task.id)
+                          : selectedSession === `${task.id}-${session.id}`
                           ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                           : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`}
@@ -514,7 +569,7 @@ export default function SessionList({ tasks, sessions, onTasksChange, onSessions
                             autoFocus
                           />
                         ) : (
-                          <span className="truncate">{task.name} / {session.name}</span>
+                          <span className="truncate" title={session.name}>{task.name} / {getDisplayName(session.id, session.name)}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
