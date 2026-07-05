@@ -680,7 +680,7 @@ fn spawn_llama_server(
     }
 
     cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
     #[cfg(windows)]
@@ -704,17 +704,21 @@ fn spawn_llama_server(
 
         match child.try_wait() {
             Ok(Some(status)) => {
-                let stderr_output = child.stderr.take()
-                    .and_then(|mut s| {
-                        let mut buf = String::new();
-                        use std::io::Read;
-                        s.read_to_string(&mut buf).ok().map(|_| buf)
-                    })
+                use std::io::Read;
+                let stdout_output = child.stdout.take()
+                    .and_then(|mut s| { let mut buf = String::new(); s.read_to_string(&mut buf).ok().map(|_| buf) })
                     .unwrap_or_default();
+                let stderr_output = child.stderr.take()
+                    .and_then(|mut s| { let mut buf = String::new(); s.read_to_string(&mut buf).ok().map(|_| buf) })
+                    .unwrap_or_default();
+                let detail = match (stdout_output.trim().is_empty(), stderr_output.trim().is_empty()) {
+                    (false, _) => stdout_output,
+                    (true, false) => stderr_output,
+                    (true, true) => "无输出信息".to_string(),
+                };
                 return Err(format!(
-                    "llama-server (PID: {}) 启动 {} 秒后退出 (代码: {}).\n错误详情:\n{}",
-                    pid, (i + 1) * 2, status.code().unwrap_or(-1),
-                    if stderr_output.is_empty() { "无错误输出" } else { &stderr_output }
+                    "llama-server (PID: {}) 启动 {} 秒后退出 (代码: {}).\n输出:\n{}",
+                    pid, (i + 1) * 2, status.code().unwrap_or(-1), detail
                 ));
             }
             Ok(None) => {}
