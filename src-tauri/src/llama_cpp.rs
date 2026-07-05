@@ -681,7 +681,7 @@ fn spawn_llama_server(
 
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
 
     #[cfg(windows)]
     {
@@ -704,9 +704,17 @@ fn spawn_llama_server(
 
         match child.try_wait() {
             Ok(Some(status)) => {
+                let stderr_output = child.stderr.take()
+                    .and_then(|mut s| {
+                        let mut buf = String::new();
+                        use std::io::Read;
+                        s.read_to_string(&mut buf).ok().map(|_| buf)
+                    })
+                    .unwrap_or_default();
                 return Err(format!(
-                    "llama-server (PID: {}) 启动 {} 秒后退出 (代码: {}).\n请检查: 1) 模型文件是否损坏 2) Vulkan 驱动是否已安装 3) 显存是否不足",
-                    pid, (i + 1) * 2, status.code().unwrap_or(-1)
+                    "llama-server (PID: {}) 启动 {} 秒后退出 (代码: {}).\n错误详情:\n{}",
+                    pid, (i + 1) * 2, status.code().unwrap_or(-1),
+                    if stderr_output.is_empty() { "无错误输出" } else { &stderr_output }
                 ));
             }
             Ok(None) => {}
