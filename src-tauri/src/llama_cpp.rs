@@ -683,12 +683,6 @@ fn spawn_llama_server(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
-
     println!("启动命令: {} -m {} --host {} --port {} -ngl {} -c {} -t {} -b {}",
         llama_server_path.display(), config.model_path, config.host, config.port,
         config.n_gpu_layers, config.n_ctx, config.threads, config.batch_size);
