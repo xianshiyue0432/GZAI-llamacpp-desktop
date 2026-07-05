@@ -224,15 +224,10 @@ GZAI-llamacpp-desktop/
 
 <div align="center">
 
-| 微信交流群 | 抖音交流群 | 赞赏支持 |
-|:---:|:---:|:---:|
-| ![微信](Image/QR/wechat-group.png) | ![抖音](Image/QR/douyin-group.jpg) | ![赞赏](Image/QR/reward-wechat.jpg) |
-| 扫码加入微信群 | 扫码关注抖音 | 微信赞赏码 |
-
-| 支付宝赞赏 |
-|:---:|
-| ![支付宝](Image/QR/reward-alipay.jpg) |
-| 支付宝扫码赞赏 |
+| 微信交流群 | 抖音交流群 | 微信赞赏 | 支付宝赞赏 |
+|:---:|:---:|:---:|:---:|
+| <img src="Image/QR/wechat-group.png" alt="微信" width="140"> | <img src="Image/QR/douyin-group.jpg" alt="抖音" width="140"> | <img src="Image/QR/reward-wechat.jpg" alt="微信赞赏" width="140"> | <img src="Image/QR/reward-alipay.jpg" alt="支付宝赞赏" width="140"> |
+| 扫码加入微信群 | 扫码关注抖音 | 微信扫码赞赏 | 支付宝扫码赞赏 |
 
 </div>
 
