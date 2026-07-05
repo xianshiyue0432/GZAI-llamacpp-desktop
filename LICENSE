@@ -1,9 +1,9 @@
-                    GNU AFFERO GENERAL PUBLIC LICENSE
-                       Version 3, 19 November 2007
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
 
- Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
- Everyone is permitted to copy and distribute verbatim copies
- of this license document, but changing it is not allowed.
+Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+Everyone is permitted to copy and distribute verbatim copies
+of this license document, but changing it is not allowed.
 
                             Preamble
 
@@ -33,11 +33,12 @@ and/or modify the software.
 improvements made in alternate versions of the program, if they
 receive widespread use, become available for other developers to
 incorporate.  Many developers of free software are heartened and
-encouraged by the resulting cooperation.  However, in the case of
-software used on network servers, this result may fail to come about.
-The GNU General Public License permits making a modified version and
-letting the public access it on a server without ever releasing its
-source code to the public.
+encouraged by the resulting cooperation.
+
+  However, in the case of software used on network servers, this result
+may fail to come about.  The GNU General Public License permits making
+a modified version and letting the public access it on a server without
+ever releasing its source code to the public.
 
   The GNU Affero General Public License is designed specifically to
 ensure that, in such cases, the modified source code becomes available
@@ -48,15 +49,28 @@ a publicly accessible server, gives the public access to the source
 code of the modified version.
 
   An older license, called the Affero General Public License and
-published by Affero, was designed to accomplish similar goals.  This is
-a different license, not a version of the Affero GPL, but Affero has
-released a new version of the Affero GPL which permits relicensing under
-this license.
+published by Affero, was designed to accomplish similar goals and is
+published under the Affero General Public License version 1, but the
+Affero General Public License version 1 has not been updated to handle
+the complexities that arise from patents, new licenses for certain parts
+such as the GNU GPL version 3, and the challenges of protecting the
+network rights of users in a world where software distribution is
+increasingly done over the Internet.
 
-  The precise terms and conditions for copying, distribution and
-modification follow.
+  The GNU Affero General Public License is intended to be used for
+software that runs on servers and provides network services.  It
+differs from the GNU General Public License in that it contains an
+additional provision addressing the distribution of source code for
+users who interact with the software over a network.  However, the GNU
+Affero General Public License is not limited to server software; we
+encourage its use for any software that can be distributed under the
+GNU General Public License, version 3.
 
-                       TERMS AND CONDITIONS
+  The GNU Affero General Public License is a free, copyleft license for
+software and other practical works, and we recommend its use for any
+software that provides network services.
+
+                            TERMS AND CONDITIONS
 
   0. Definitions.
 
@@ -261,7 +275,7 @@ in one of these ways:
     with subsection 6b.
 
     d) Convey the object code by offering access from a designated
-    place (gratis or for a charge), and offer equivalent access to the
+    place (gratis or for charge), and offer equivalent access to the
     Corresponding Source in the same way through the same place at no
     further charge.  You need not require recipients to copy the
     Corresponding Source along with the object code.  If the place to
@@ -522,8 +536,8 @@ contain the covered work, unless you entered into that arrangement,
 or that patent license was granted, prior to 28 March 2007.
 
   Nothing in this License shall be construed as excluding or limiting
-any implied license or other defenses to infringement that may
-otherwise be available to you under applicable patent law.
+any implied license or other defenses to infringement that may be
+otherwise available to you under applicable patent law.
 
   12. No Surrender of Others' Freedom.
 
@@ -567,14 +581,13 @@ address new problems or concerns.
 
   Each version is given a distinguishing version number.  If the
 Program specifies that a certain numbered version of the GNU Affero General
-Public License "or any later version" applies to it, you have the
-option of following the terms and conditions either of that numbered
-version or of any later version published by the Free Software
-Foundation.  If the Program does not specify a version number of the
-GNU Affero General Public License, you may choose any version ever published
-by the Free Software Foundation.
+Public License "or any later version" applies to it, you have the option of
+following the terms and conditions either of that numbered version or of any
+later version published by the Free Software Foundation.  If the Program
+does not specify a version number of the GNU Affero General Public License,
+you may choose any version ever published by the Free Software Foundation.
 
-  If the Program specifies that a proxy can decide which future
+  If the Program specifies that a proxy can decide whether future
 versions of the GNU Affero General Public License can be used, that proxy's
 public statement of acceptance of a version permanently authorizes you
 to choose that version for the Program.
@@ -616,7 +629,7 @@ an absolute waiver of all civil liability in connection with the
 Program, unless a warranty or assumption of liability accompanies a
 copy of the Program in return for a fee.
 
-                     END OF TERMS AND CONDITIONS
+            END OF TERMS AND CONDITIONS
 
             How to Apply These Terms to Your New Programs
 
@@ -633,8 +646,8 @@ the "copyright" line and a pointer to where the full notice is found.
     Copyright (C) <year>  <name of author>
 
     This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as published
-    by the Free Software Foundation, either version 3 of the License, or
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
     This program is distributed in the hope that it will be useful,
@@ -648,12 +661,11 @@ the "copyright" line and a pointer to where the full notice is found.
 Also add information on how to contact you by electronic and paper mail.
 
   If your software can interact with users remotely through a computer
-network, you should also make sure that it provides a way for users to
-get its source.  For example, if your program is a web application, its
-interface could display a "Source" link that leads users to an archive
-of the code.  There are many ways you could offer source, and different
-solutions will be better for different programs; see section 13 for the
-specific requirements.
+network, you should also make sure that each user receives the
+Corresponding Source by providing access to it from a network server at
+no charge through some standard or customary means of facilitating
+copying of software.  This section is particularly relevant if your
+software can be used as a web service.
 
   You should also get your employer (if you work as a programmer) or school,
 if any, to sign a "copyright disclaimer" for the program, if necessary.
