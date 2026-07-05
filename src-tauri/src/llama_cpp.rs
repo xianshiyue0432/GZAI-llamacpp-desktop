@@ -679,13 +679,24 @@ fn spawn_llama_server(
         }
     }
 
+    // 将输出重定向到临时文件，避免管道缓冲问题
+    let log_dir = std::env::temp_dir().join("canai-llama-logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let stdout_path = log_dir.join("llama-server-stdout.log");
+    let stderr_path = log_dir.join("llama-server-stderr.log");
+    let stdout_file = std::fs::File::create(&stdout_path)
+        .map_err(|e| format!("创建 stdout 日志文件失败: {}", e))?;
+    let stderr_file = std::fs::File::create(&stderr_path)
+        .map_err(|e| format!("创建 stderr 日志文件失败: {}", e))?;
+
     cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stdout(stdout_file)
+        .stderr(stderr_file);
 
     println!("启动命令: {} -m {} --host {} --port {} -ngl {} -c {} -t {} -b {}",
         llama_server_path.display(), config.model_path, config.host, config.port,
         config.n_gpu_layers, config.n_ctx, config.threads, config.batch_size);
+    println!("日志文件: {}", log_dir.display());
 
     let mut child = cmd.spawn()
         .map_err(|e| format!("启动 llama-server 失败: {}", e))?;
@@ -698,18 +709,9 @@ fn spawn_llama_server(
 
         match child.try_wait() {
             Ok(Some(status)) => {
-                use std::io::Read;
-                let stdout_output = child.stdout.take()
-                    .and_then(|mut s| { let mut buf = String::new(); s.read_to_string(&mut buf).ok().map(|_| buf) })
-                    .unwrap_or_default();
-                let stderr_output = child.stderr.take()
-                    .and_then(|mut s| { let mut buf = String::new(); s.read_to_string(&mut buf).ok().map(|_| buf) })
-                    .unwrap_or_default();
-                let detail = match (stdout_output.trim().is_empty(), stderr_output.trim().is_empty()) {
-                    (false, _) => stdout_output,
-                    (true, false) => stderr_output,
-                    (true, true) => "无输出信息".to_string(),
-                };
+                let detail = read_file(&stdout_path).or_else(|| read_file(&stderr_path)).unwrap_or_else(|| "无输出信息".to_string());
+                let _ = std::fs::remove_file(&stdout_path);
+                let _ = std::fs::remove_file(&stderr_path);
                 return Err(format!(
                     "llama-server (PID: {}) 启动 {} 秒后退出 (代码: {}).\n输出:\n{}",
                     pid, (i + 1) * 2, status.code().unwrap_or(-1), detail
@@ -724,6 +726,15 @@ fn spawn_llama_server(
 
     println!("llama-server (PID: {}) 进程稳定，等待健康检查...", pid);
     Ok((child, server_url))
+}
+
+fn read_file(path: &std::path::Path) -> Option<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut buf = String::new();
+    file.read_to_string(&mut buf).ok()?;
+    let trimmed = buf.trim().to_string();
+    if trimmed.is_empty() { None } else { Some(trimmed) }
 }
 
 fn update_state_after_start(
