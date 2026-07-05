@@ -219,7 +219,8 @@ function AppContent() {
   // 窗口关闭前强制刷写到文件（await 确保写入完成后再关闭）
   useEffect(() => {
     let cleanup: (() => void) | null = null
-    getCurrentWindow().onCloseRequested(async () => {
+    getCurrentWindow().onCloseRequested(async (event) => {
+      event.preventDefault()
       saveTasks(tasksRef.current)
       saveSessions(sessionsRef.current)
       await Promise.all([

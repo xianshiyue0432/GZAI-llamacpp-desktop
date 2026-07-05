@@ -49,18 +49,13 @@ fn main() {
                 })
                 .build(app)?;
 
-            // 拦截窗口关闭：隐藏到托盘而非退出
-            if let Some(main_window) = app.get_webview_window("main") {
-                let win = main_window.clone();
-                main_window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        let _ = win.hide();
-                        api.prevent_close();
-                    }
-                });
-            }
-
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
         })
         .manage(TerminalState::default())
         .manage(LlamaCppState::default())

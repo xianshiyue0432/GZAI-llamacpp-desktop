@@ -224,7 +224,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   messagesRef.current = messages
   useEffect(() => {
     let cleanup: (() => void) | null = null
-    getCurrentWindow().onCloseRequested(async () => {
+    getCurrentWindow().onCloseRequested(async (event) => {
+      event.preventDefault()
       if (messagesSaveTimerRef.current) {
         clearTimeout(messagesSaveTimerRef.current)
         messagesSaveTimerRef.current = null

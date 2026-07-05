@@ -18,6 +18,7 @@
     "core:window:allow-center",
     "core:window:allow-set-focus",
     "core:window:allow-destroy",
+    "core:window:allow-hide",
     "core:window:allow-is-focused",
     "core:webview:allow-create-webview-window",
     "dialog:default",
