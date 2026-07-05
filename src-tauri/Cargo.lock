@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "canmodel"
-version = "1.0.5-12"
+version = "1.0.5-13"
 dependencies = [
  "dirs 5.0.1",
  "futures-util",

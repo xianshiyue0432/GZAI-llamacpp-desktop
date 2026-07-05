@@ -104,6 +104,10 @@ export default function LocalModelSettings() {
   const [showApiKey, setShowApiKey] = useState(false)
   const [modelPath, setModelPath] = useState('')
   const [copied, setCopied] = useState(false)
+  const [copiedUrl, setCopiedUrl] = useState(false)
+  const [copyError, setCopyError] = useState('')
+  const [showCustomCtx, setShowCustomCtx] = useState(false)
+  const presets = [2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]
   const [models, setModels] = useState<Model[]>([])
   const [refreshing, setRefreshing] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -208,6 +212,11 @@ export default function LocalModelSettings() {
       if (healthIntervalRef.current) clearInterval(healthIntervalRef.current)
     }
   }, [])
+
+  // 配置变化自动保存到 localStorage，确保主界面调用时读到最新值
+  useEffect(() => {
+    saveLocalModelConfig(config)
+  }, [config])
 
   useEffect(() => {
     if (models.length > 0 && models[0].id !== 'placeholder') {
@@ -1025,11 +1034,27 @@ export default function LocalModelSettings() {
                 readOnly
                 className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none"
               />
-              <button 
-                className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors" 
-                onClick={() => navigator.clipboard.writeText(serverUrl)}
+              <button
+                className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(serverUrl)
+                    setCopiedUrl(true)
+                    setCopyError('')
+                    setTimeout(() => setCopiedUrl(false), 2000)
+                  } catch (e) {
+                    setCopyError(`复制失败: ${e instanceof Error ? e.message : '未知错误'}`)
+                    setTimeout(() => setCopyError(''), 3000)
+                  }
+                }}
               >
-                <Copy className="w-4 h-4" />
+                {copiedUrl ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                {copyError && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg whitespace-nowrap shadow-lg z-50">
+                    {copyError}
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-red-500" />
+                  </div>
+                )}
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-1">API 端点: {serverUrl}/v1/chat/completions</p>
@@ -1224,17 +1249,42 @@ export default function LocalModelSettings() {
                   <HardDrive className="w-4 h-4 text-gray-500" />
                   <span className="text-sm text-gray-700 dark:text-gray-300">上下文长度</span>
                 </div>
-                <select
-                  value={config.n_ctx}
-                  onChange={(e) => setConfig({ ...config, n_ctx: Number(e.target.value) })}
-                  className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value={2048}>2048</option>
-                  <option value={4096}>4096</option>
-                  <option value={8192}>8192</option>
-                  <option value={16384}>16384</option>
-                  <option value={32768}>32768</option>
-                </select>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={showCustomCtx ? 'custom' : config.n_ctx}
+                    onChange={(e) => {
+                      if (e.target.value === 'custom') {
+                        setShowCustomCtx(true)
+                      } else {
+                        setShowCustomCtx(false)
+                        setConfig({ ...config, n_ctx: Number(e.target.value) })
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={2048}>2048</option>
+                    <option value={4096}>4096</option>
+                    <option value={8192}>8192</option>
+                    <option value={16384}>16384</option>
+                    <option value={32768}>32768</option>
+                    <option value={65536}>65536</option>
+                    <option value={131072}>131072</option>
+                    <option value={262144}>262144</option>
+                    <option value={524288}>524288</option>
+                    <option value={1048576}>1048576</option>
+                    <option value="custom">自定义...</option>
+                  </select>
+                  {showCustomCtx && (
+                    <input
+                      type="number"
+                      value={config.n_ctx}
+                      onChange={(e) => setConfig({ ...config, n_ctx: Math.max(512, Number(e.target.value)) })}
+                      min={512}
+                      className="w-24 px-2 py-1.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-400 dark:border-blue-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      autoFocus
+                    />
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center justify-between">
