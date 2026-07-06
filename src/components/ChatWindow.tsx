@@ -1747,6 +1747,7 @@ export default function ChatWindow({
                         mmproj_path: mmprojPath,
                         audio_input_path: audioInputPath,
                         model_vocoder: audioOutputPath,
+                        backend: sconfig.backend || 'auto',
                       }
                     })
                     setLlamaServiceStatus(status.running ? 'running' : 'stopped')

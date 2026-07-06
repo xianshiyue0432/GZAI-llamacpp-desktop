@@ -121,6 +121,8 @@ export default function LocalModelSettings() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showFormatModal, setShowFormatModal] = useState(false)
   const [showCompanionModal, setShowCompanionModal] = useState<string | null>(null)
+  const [showCudaConfirm, setShowCudaConfirm] = useState(false)
+  const [pendingBackend, setPendingBackend] = useState('')
   const [companionConfigs, setCompanionConfigs] = useState<Record<string, CompanionConfig>>(() => loadCompanionConfigs())
   const [modelTypes, setModelTypes] = useState<Record<string, string>>(() => loadModelTypes())
   const [companionEdits, setCompanionEdits] = useState<CompanionConfig>({ image_video: [], audio_input: [], audio_output: [] })
@@ -141,9 +143,19 @@ export default function LocalModelSettings() {
     quantization: 'auto' as const,
     gpu_memory_limit: 8,
     mtp_tokens: 0,
+    backend: 'auto',
   }
 
-  const [config, setConfig] = useState(DEFAULT_CONFIG)
+  const [config, setConfig] = useState(() => {
+    const saved = loadLocalModelConfig()
+    // 兼容旧版 device 字段：device=gpu → backend=vulkan
+    if (!saved.backend || saved.backend === 'auto') {
+      const device = (saved as any).device
+      if (device === 'gpu') saved.backend = 'vulkan'
+      else if (device === 'cpu') saved.backend = 'cpu'
+    }
+    return { ...DEFAULT_CONFIG, ...saved }
+  })
 
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
@@ -271,6 +283,7 @@ export default function LocalModelSettings() {
         threads: config.threads,
         batch_size: config.batch_size,
         mtp_tokens: config.mtp_tokens,
+        backend: config.backend,
         apiKey: apiKey,
         serverUrl: serverUrl,
       }))
@@ -323,6 +336,7 @@ export default function LocalModelSettings() {
           mmproj_path: mmprojPath,
           audio_input_path: audioInputPath,
           model_vocoder: modelVocoder,
+          backend: config.backend,
         }
       })
       setLlamaServiceStatus('running')
@@ -536,6 +550,7 @@ export default function LocalModelSettings() {
         mmproj_path: mmprojPath,
         audio_input_path: audioInputPath,
         model_vocoder: modelVocoder,
+        backend: config.backend,
       }
 
       const status: ServerStatus = await invoke('llama_cpp_start', { config: llamaConfig })
@@ -802,6 +817,7 @@ export default function LocalModelSettings() {
             mmproj_path: mmprojPath,
             audio_input_path: audioInputPath,
             model_vocoder: modelVocoder,
+            backend: config.backend,
           }
         }).then(() => {
           setLlamaServiceStatus('running')
@@ -1168,16 +1184,25 @@ export default function LocalModelSettings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Cpu className="w-4 h-4 text-gray-500" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">推理设备</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">推理引擎</span>
                 </div>
                 <select
-                  value={config.device}
-                  onChange={(e) => setConfig({ ...config, device: e.target.value as 'auto' | 'cpu' | 'gpu' })}
+                  value={config.backend}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    if (val === 'cuda') {
+                      setPendingBackend(val)
+                      setShowCudaConfirm(true)
+                    } else {
+                      setConfig({ ...config, backend: val })
+                    }
+                  }}
                   className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="auto">Auto</option>
+                  <option value="auto">自动选择</option>
                   <option value="cpu">CPU</option>
-                  <option value="gpu">GPU</option>
+                  <option value="vulkan">GPU（Vulkan）</option>
+                  <option value="cuda">GPU（CUDA）</option>
                 </select>
               </div>
 
@@ -1758,6 +1783,52 @@ export default function LocalModelSettings() {
           </div>
         </div>
       )}
+
+      {showCudaConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onClick={() => { setShowCudaConfirm(false); setPendingBackend('') }}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 border border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
+                <span className="text-yellow-600 dark:text-yellow-400 text-xl font-bold">!</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">确认切换推理引擎</h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+              您选择了 <strong className="text-orange-600 dark:text-orange-400">GPU（CUDA）</strong> 推理引擎。
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+              此选项须确认设备有 <strong>NVIDIA 显卡 + CUDA 驱动</strong>，否则会导致推理降级变慢或是推理失败。
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">
+              下载 CUDA 驱动请点击：
+              <a
+                href="https://developer.nvidia.com/cuda-downloads"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:text-blue-600 underline ml-1"
+                onClick={e => e.stopPropagation()}
+              >
+                NVIDIA CUDA 下载
+              </a>
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setConfig({ ...config, backend: 'cuda' }); setShowCudaConfirm(false); setPendingBackend('') }}
+                className="flex-1 px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                确认
+              </button>
+              <button
+                onClick={() => { setShowCudaConfirm(false); setPendingBackend('') }}
+                className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

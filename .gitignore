@@ -27,13 +27,12 @@ bun.lock
 # Generated
 src-tauri/gen/
 
-# Binary resources (downloaded/compiled, not source code)
+# Binary resources (pre-built dependencies, download from releases)
 src-tauri/resources/llama-cpp/backup/
 src-tauri/resources/llama-cpp/*.exe
 src-tauri/resources/llama-cpp/*.dll
-# src-tauri 根目录的 .exe .dll 是预编译依赖，需要被 git 跟踪
-# src-tauri/*.exe
-# src-tauri/*.dll
+src-tauri/*.exe
+src-tauri/*.dll
 
 # Build scripts
 build.ps1

@@ -813,6 +813,7 @@ export function saveLocalModelConfig(config: {
   threads: number
   batch_size: number
   mtp_tokens: number
+  backend: string
 }): void {
   try {
     localStorage.setItem(LOCAL_MODEL_CONFIG_KEY, JSON.stringify(config))
@@ -827,13 +828,18 @@ export function loadLocalModelConfig(): {
   threads: number
   batch_size: number
   mtp_tokens: number
+  backend: string
 } {
   try {
     const saved = localStorage.getItem(LOCAL_MODEL_CONFIG_KEY)
     if (saved) {
-      return JSON.parse(saved)
+      return { ...loadDefaultConfig(), ...JSON.parse(saved) }
     }
   } catch {}
+  return loadDefaultConfig()
+}
+
+function loadDefaultConfig() {
   return {
     port: 8080,
     host: '127.0.0.1',
@@ -842,6 +848,7 @@ export function loadLocalModelConfig(): {
     threads: 8,
     batch_size: 512,
     mtp_tokens: 0,
+    backend: 'auto',
   }
 }
 

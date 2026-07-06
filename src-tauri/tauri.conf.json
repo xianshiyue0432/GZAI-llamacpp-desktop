@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "CanAI",
-  "version": "1.0.5-13",
+  "version": "1.0.5-14",
   "identifier": "com.canai.app",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -43,6 +43,8 @@
       "ggml-base.dll": "./",
       "ggml-rpc.dll": "./",
       "ggml-vulkan.dll": "./",
+      "ggml-cuda.dll": "./",
+      "ggml-cuda-13.dll": "./",
       "ggml-cpu-x64.dll": "./",
       "ggml-cpu-alderlake.dll": "./",
       "ggml-cpu-cannonlake.dll": "./",
@@ -58,7 +60,13 @@
       "ggml-cpu-sse42.dll": "./",
       "ggml-cpu-zen4.dll": "./",
       "libomp140.x86_64.dll": "./",
-      "mtmd.dll": "./"
+      "mtmd.dll": "./",
+      "cublas64_12.dll": "./",
+      "cublasLt64_12.dll": "./",
+      "cudart64_12.dll": "./",
+      "cublas64_13.dll": "./",
+      "cublasLt64_13.dll": "./",
+      "cudart64_13.dll": "./"
     }
   }
 }

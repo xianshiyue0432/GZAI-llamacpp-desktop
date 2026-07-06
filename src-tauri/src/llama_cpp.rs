@@ -51,6 +51,7 @@ pub struct LlamaCppConfig {
     pub mmproj_path: Option<String>,
     pub audio_input_path: Option<String>,
     pub model_vocoder: Option<String>,
+    pub backend: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -621,6 +622,22 @@ fn auto_find_mmproj(model_path: &str) -> Option<String> {
     None
 }
 
+/// 通过 nvidia-smi 查询 NVIDIA 驱动版本
+fn get_nvidia_driver_version() -> Option<String> {
+    let output = std::process::Command::new("nvidia-smi")
+        .args(["--query-gpu=driver_version", "--format=csv,noheader"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !version.is_empty() { Some(version) } else { None }
+    } else {
+        None
+    }
+}
+
 fn spawn_llama_server(
     llama_server_path: &PathBuf,
     config: &LlamaCppConfig,
@@ -631,6 +648,65 @@ fn spawn_llama_server(
     }
 
     let server_url = format!("http://{}:{}", config.host, config.port);
+    
+    // 根据推理引擎调整 n_gpu_layers
+    let effective_ngl = match config.backend.as_deref() {
+        Some("cpu") => {
+            println!("推理引擎选择 CPU，强制 n_gpu_layers=0");
+            0
+        }
+        _ => config.n_gpu_layers,
+    };
+    
+    // CUDA 版本自动检测与 DLL 匹配
+    let llama_dir = llama_server_path.parent().map(|p| p.to_path_buf());
+    if let Some(ref dir) = llama_dir {
+        let cuda13_rt = dir.join("cublas64_13.dll");
+        let cuda13_rt2 = dir.join("cudart64_13.dll");
+        let cuda13_rt3 = dir.join("cublasLt64_13.dll");
+        let cuda13_dll = dir.join("ggml-cuda-13.dll");
+        let cuda12_rt = dir.join("cublas64_12.dll");
+        let cuda_target = dir.join("ggml-cuda.dll");
+        let is_cuda_backend = matches!(config.backend.as_deref(), Some("cuda") | None | Some("auto"));
+
+        println!("--- CUDA 环境检测 ---");
+        println!("  配置文件后端: {:?}", config.backend.as_deref().unwrap_or("auto"));
+
+        if is_cuda_backend {
+            // 检查 CUDA 13.x 文件
+            let has_cuda13_rt = cuda13_rt.exists() && cuda13_rt2.exists() && cuda13_rt3.exists();
+            let has_cuda13_dll = cuda13_dll.exists();
+            let has_cuda12_rt = cuda12_rt.exists();
+            println!("  检查: ggml-cuda-13.dll(是否存在: {})", if has_cuda13_dll { "✓" } else { "✗" });
+            println!("  检查: cublas64_13.dll(是否存在: {})", if cuda13_rt.exists() { "✓" } else { "✗" });
+            println!("  检查: cudart64_13.dll(是否存在: {})", if cuda13_rt2.exists() { "✓" } else { "✗" });
+            println!("  检查: cublas64_12.dll(是否存在: {})", if has_cuda12_rt { "✓" } else { "✗" });
+
+            // 尝试获取 NVIDIA 驱动版本 (通过 nvidia-smi)
+            let driver_version = get_nvidia_driver_version();
+            match driver_version {
+                Some(ver) => println!("  检测 NVIDIA 驱动版本: {}", ver),
+                None => println!("  未能获取 NVIDIA 驱动版本信息"),
+            }
+
+            if has_cuda13_rt && has_cuda13_dll {
+                println!("  ⇒ 匹配 CUDA 13.3，自动切换 ggml-cuda.dll → CUDA 13.3");
+                if let Err(e) = std::fs::copy(&cuda13_dll, &cuda_target) {
+                    println!("  ⚠ 复制 CUDA 13.3 DLL 失败 ({}), 使用 CUDA 12.4 作为备选", e);
+                    println!("  ⇒ 最终选择: CUDA 12.4");
+                } else {
+                    println!("  ⇒ 最终选择: CUDA 13.3");
+                }
+            } else if has_cuda12_rt {
+                println!("  ⇒ 未检测到 CUDA 13.x 文件，使用 CUDA 12.4");
+            } else {
+                println!("  ⇒ 未检测到 CUDA 运行库文件，可能仅 CPU 可用");
+            }
+        } else {
+            println!("  非 CUDA 后端，跳过 CUDA 版本检测");
+        }
+        println!("---------------------");
+    }
     
     let mut cmd = Command::new(&llama_server_path);
     if let Some(parent) = llama_server_path.parent() {
@@ -643,7 +719,7 @@ fn spawn_llama_server(
         .arg("--port")
         .arg(config.port.to_string())
         .arg("-ngl")
-        .arg(config.n_gpu_layers.to_string())
+        .arg(effective_ngl.to_string())
         .arg("-c")
         .arg(config.n_ctx.to_string())
         .arg("-t")
@@ -681,13 +757,23 @@ fn spawn_llama_server(
 
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
 
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000);
     }
+
+    // 打印推理引擎选择信息
+    let backend_display = match config.backend.as_deref() {
+        Some("cpu") => "CPU",
+        Some("vulkan") => "GPU (Vulkan)",
+        Some("cuda") => "GPU (CUDA)",
+        Some("auto") | None => "自动选择",
+        Some(other) => other,
+    };
+    println!("推理引擎: {} (n_gpu_layers={})", backend_display, config.n_gpu_layers);
 
     println!("启动命令: {} -m {} --host {} --port {} -ngl {} -c {} -t {} -b {}",
         llama_server_path.display(), config.model_path, config.host, config.port,
@@ -704,9 +790,28 @@ fn spawn_llama_server(
 
         match child.try_wait() {
             Ok(Some(status)) => {
+                // 读取 stderr 中的错误信息
+                use std::io::Read;
+                let mut stderr_output = String::new();
+                if let Some(mut stderr) = child.stderr.take() {
+                    let _ = stderr.read_to_string(&mut stderr_output);
+                }
+                let error_lines: Vec<&str> = stderr_output.lines()
+                    .filter(|l| l.contains(" E ") || l.contains("error"))
+                    .collect();
+                let error_detail = if error_lines.is_empty() {
+                    stderr_output.trim().to_string()
+                } else {
+                    error_lines.join("\n")
+                };
+                let error_detail = if error_detail.is_empty() {
+                    String::new()
+                } else {
+                    format!("\nllama-server 错误输出:\n{}", error_detail)
+                };
                 return Err(format!(
-                    "llama-server (PID: {}) 启动 {} 秒后退出 (代码: {}).\n请检查: 1) 模型文件是否损坏 2) Vulkan 驱动是否已安装 3) 显存是否不足",
-                    pid, (i + 1) * 2, status.code().unwrap_or(-1)
+                    "llama-server (PID: {}) 启动 {} 秒后退出 (代码: {}).\n请检查: 1) 模型文件是否损坏 2) 推理引擎({})所需的GPU驱动是否已安装 3) 显存是否不足{}",
+                    pid, (i + 1) * 2, status.code().unwrap_or(-1), backend_display, error_detail
                 ));
             }
             Ok(None) => {}
@@ -716,7 +821,7 @@ fn spawn_llama_server(
         }
     }
 
-    println!("llama-server (PID: {}) 进程稳定，等待健康检查...", pid);
+    println!("llama-server (PID: {}) 启动检查通过，开始 HTTP 健康检查...", pid);
     Ok((child, server_url))
 }
 
@@ -754,6 +859,7 @@ pub async fn llama_cpp_start(
     
     if is_running {
         let url = state.server_url.lock().map_err(|e| format!("Lock error: {}", e))?.clone();
+        println!("llama-server 已在运行中: {}", url);
         return Ok(ServerStatus {
             running: true,
             url,
@@ -769,11 +875,34 @@ pub async fn llama_cpp_start(
     }
 
     let llama_server_path = find_llama_server()?;
-    let (child, server_url) = spawn_llama_server(&llama_server_path, &config)?;
+    println!("找到 llama-server: {}", llama_server_path.display());
+    println!("正在启动推理服务...");
+    let (mut child, server_url) = spawn_llama_server(&llama_server_path, &config)?;
 
-    {
-        let mut process_guard = state.server_process.lock().map_err(|e| format!("Lock error: {}", e))?;
-        *process_guard = Some(child);
+    // 取出 stderr，启动后台线程实时监控推理日志
+    let stderr_pipe = child.stderr.take();
+    if let Some(stderr) = stderr_pipe {
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    let lower = line.to_lowercase();
+                    // 打印启动/加载/推理相关的关键信息
+                    if lower.contains("offloaded") || lower.contains("llama_new_context")
+                        || lower.contains("model loaded") || lower.contains("model_load")
+                        || lower.contains("backend") || lower.contains("device")
+                        || lower.contains("tokens/s") || lower.contains("tok/s") || lower.contains(" t/s")
+                        || lower.contains("timing") || lower.contains("eval time")
+                        || lower.contains("total time")
+                        || lower.contains("compute")
+                    {
+                        let clean = line.trim_start_matches(|c: char| !c.is_alphanumeric() && c != '[' && c != ']' && c != ' ');
+                        println!("  {}", clean);
+                    }
+                }
+            }
+        });
     }
 
     let health_url = format!("{}/health", server_url.trim_end_matches('/'));
@@ -783,6 +912,7 @@ pub async fn llama_cpp_start(
         match reqwest::get(&health_url).await {
             Ok(resp) if resp.status().is_success() => {
                 loaded = true;
+                println!("模型加载完成！健康检查通过: {}", health_url);
                 break;
             }
             _ => {
@@ -794,6 +924,10 @@ pub async fn llama_cpp_start(
     }
 
     if loaded {
+        {
+            let mut process_guard = state.server_process.lock().map_err(|e| format!("Lock error: {}", e))?;
+            *process_guard = Some(child);
+        }
         {
             let mut running_guard = state.is_running.lock().map_err(|e| format!("Lock error: {}", e))?;
             *running_guard = true;
@@ -847,12 +981,39 @@ pub async fn llama_cpp_switch_model(
     }
 
     let llama_server_path = find_llama_server()?;
-    let (child, server_url) = match spawn_llama_server(&llama_server_path, &config) {
+    println!("找到 llama-server: {}", llama_server_path.display());
+    println!("正在启动推理服务...");
+    let (mut child, server_url) = match spawn_llama_server(&llama_server_path, &config) {
         Ok(result) => result,
         Err(e) => {
             return Err(format!("切换模型失败: {}\n可能原因：旧进程端口未释放或模型文件路径无效。请稍后重试。", e));
         }
     };
+
+    // stderr 监控线程
+    let stderr_pipe = child.stderr.take();
+    if let Some(stderr) = stderr_pipe {
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    let lower = line.to_lowercase();
+                    if lower.contains("offloaded") || lower.contains("llama_new_context")
+                        || lower.contains("model loaded") || lower.contains("model_load")
+                        || lower.contains("backend") || lower.contains("device")
+                        || lower.contains("tokens/s") || lower.contains("tok/s") || lower.contains(" t/s")
+                        || lower.contains("timing") || lower.contains("eval time")
+                        || lower.contains("total time")
+                        || lower.contains("compute")
+                    {
+                        let clean = line.trim_start_matches(|c: char| !c.is_alphanumeric() && c != '[' && c != ']' && c != ' ');
+                        println!("  {}", clean);
+                    }
+                }
+            }
+        });
+    }
 
     update_state_after_start(&state, child, &server_url, &config.model_path)?;
 
@@ -863,6 +1024,7 @@ pub async fn llama_cpp_switch_model(
         match reqwest::get(&health_url).await {
             Ok(resp) if resp.status().is_success() => {
                 loaded = true;
+                println!("模型加载完成！健康检查通过: {}", health_url);
                 break;
             }
             _ => {
