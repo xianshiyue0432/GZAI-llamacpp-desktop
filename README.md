@@ -9,7 +9,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/xianshiyue0432/GZAI-llamacpp-desktop?style=flat-square)](https://github.com/xianshiyue0432/GZAI-llamacpp-desktop/releases)
 [![GitHub License](https://img.shields.io/github/license/xianshiyue0432/GZAI-llamacpp-desktop?style=flat-square&color=blue)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue?style=flat-square)
-![GPU](https://img.shields.io/badge/GPU-Vulkan%20Accelerated-green?style=flat-square)
+![GPU](https://img.shields.io/badge/GPU-CUDA%20|%20Vulkan%20|%20CPU-green?style=flat-square)
 ![Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange?style=flat-square)
 ![React](https://img.shields.io/badge/frontend-React%2018-61DAFB?style=flat-square)
 
@@ -66,7 +66,7 @@ GZAI-llamacpp-desktop 是一款基于 **Tauri 2** + **React** 构建的桌面 AI
 │            │                                            │
 │  ┌─────────▼────────────────────────────────────────┐   │
 │  │           llama-server 推理引擎                    │   │
-│  │  (支持 CPU / Vulkan GPU 加速)          │   │
+│  │  (支持 CPU / GPU CUDA / GPU Vulkan 加速)          │   │
 │  └──────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -78,7 +78,7 @@ GZAI-llamacpp-desktop 是一款基于 **Tauri 2** + **React** 构建的桌面 AI
 | **桌面框架** | [Tauri 2](https://v2.tauri.app/)（Rust） |
 | **前端框架** | React 18 + TypeScript |
 | **样式** | Tailwind CSS |
-| **推理引擎** | llama.cpp 支持 Vulkan GPU 加速（兼容 NVIDIA / AMD / Intel 显卡） |
+| **推理引擎** | llama.cpp 支持 GPU CUDA / GPU Vulkan / CPU 三种推理模式，启动时自动检测并匹配 |
 | **进程通信** | Tauri IPC（invoke / events） |
 | **终端** | xterm.js |
 | **代码编辑器** | Monaco Editor |
@@ -91,7 +91,8 @@ GZAI-llamacpp-desktop 是一款基于 **Tauri 2** + **React** 构建的桌面 AI
 
 ### 核心功能
 
-- **本地模型推理**：集成 llama.cpp，支持 GGUF 格式模型，CPU / Vulkan GPU 加速
+- **本地模型推理**：集成 llama.cpp，支持 GGUF 格式模型，可在 CPU / GPU CUDA / GPU Vulkan 间自由切换
+- **多种推理引擎**：支持自动选择、纯 CPU、GPU（Vulkan）、GPU（CUDA）四种模式，CUDA 13.3 / 12.4 自动检测匹配
 - **多会话管理**：支持创建多个独立对话会话，标签页快速切换
 - **上下文配置**：可自定义上下文长度（最高 1M tokens），适配不同模型和硬件
 - **API Key 管理**：内置 API Key 生成与管理，安全访问本地服务
@@ -148,9 +149,9 @@ GZAI-llamacpp-desktop 是一款基于 **Tauri 2** + **React** 构建的桌面 AI
 | 内存 | 8 GB | 16 GB+ |
 | 显存 | 4 GB | 8 GB+ |
 | 存储 | 10 GB 可用空间 | 50 GB+（用于存放模型） |
-| GPU（加速） | 任意 Vulkan 兼容显卡 | NVIDIA / AMD / Intel 支持 Vulkan 的显卡 |
+| GPU（加速） | CPU（无独立显卡） | NVIDIA GPU（CUDA 12.4+）或任意 Vulkan 兼容显卡 |
 
-> **GPU 加速说明**：本软件集成 llama.cpp Vulkan 后端实现 GPU 加速（`ggml-vulkan.dll`），兼容 NVIDIA、AMD、Intel 支持 Vulkan 的显卡。当前版本尚未集成原生 CUDA 后端。推理时可在设置中调整 `GPU 层数` 参数控制 GPU 卸载比例。
+> **推理引擎说明**：本软件内置三大推理引擎，可在设置中自由切换。**CPU 模式**适用于无独立显卡的设备；**GPU（Vulkan）**兼容 NVIDIA、AMD、Intel 支持 Vulkan 的显卡；**GPU（CUDA）**专为 NVIDIA 显卡优化，自动检测 CUDA 13.3 / 12.4 运行时版本并匹配对应后端。推理时可在设置中调整 `GPU 层数` 参数控制 GPU 卸载比例。
 
 ### 使用流程
 
